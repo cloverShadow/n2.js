@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+<head>
+    <title>插件配置测试</title>
+    <meta charset="utf-8">
+    <script src="n2.js"></script>
+    <script src="parentPlugin.js"></script>
+    <script src="testPlugin.js"></script>
+</head>
+<body>
+<script>
+    var testPlugin = new gis.testPlugin();
+    testPlugin.hello();
+    testPlugin.parentHello();
+    console.log(testPlugin.parentName);
+    testPlugin.parentName = "yk";
+    console.log(testPlugin.parentName);
+</script>
+</body>
+</html>
