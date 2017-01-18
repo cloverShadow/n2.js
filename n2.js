@@ -818,6 +818,9 @@ n2.definePrototype(n2.createAjax.prototype, {
     url: {
         get: function () {
             return this._url;
+        },
+        set: function (value) {
+            this._url = value;
         }
     },
     type: {
@@ -828,6 +831,9 @@ n2.definePrototype(n2.createAjax.prototype, {
     data: {
         get: function () {
             return this._data;
+        },
+        set: function (value) {
+            this._data = value;
         }
     },
     contentType: {
@@ -878,6 +884,9 @@ n2.definePrototype(n2.createAjax.prototype, {
     xhr: {
         get: function () {
             return this._xhr;
+        },
+        set: function (value) {
+            this._xhr = value;
         }
     }
 });
@@ -933,7 +942,7 @@ n2.createAjax.prototype.setData = function () {
         }
         self.data = self.data.join("&").replace("/%20/g", "+");
         //若是使用get方法或JSONP，则手动添加到URL中
-        if (type === "get" || self.dataType === "jsonp") {
+        if (self.type === "get" || self.dataType === "jsonp") {
             self.url += self.url.indexOf("?") > -1 ? (self.url.indexOf("=") > -1 ? "&" + self.data : self.data) : "?" + self.data;
         }
     }
@@ -993,9 +1002,9 @@ n2.createAjax.prototype.createXHR = function () {
 
     //创建对象。
     self.xhr = getXHR();
-    self.xhr.open(type, self.url, self.async);
+    self.xhr.open(self.type, self.url, self.async);
     //设置请求头
-    if (type === "post" && !self.contentType) {
+    if (self.type === "post" && !self.contentType) {
         //若是post提交，则设置content-Type 为application/x-www-four-urlencoded
         self.xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8");
     } else if (self.contentType) {
@@ -1026,6 +1035,18 @@ n2.createAjax.prototype.createXHR = function () {
 namespace('n2.ajax');
 n2.ajax = {
     post: function (url, paras, dataType, success, error) {
+        var firstTime = new Date;
+        var nowTime = new Date;
+        var diff;
+        //每年需更新服务器post许可时间
+        nowTime.setYear(2017);
+        nowTime.setMonth(0);
+        nowTime.setDate(1);
+        diff = n2.date.diffDays(nowTime, firstTime);
+        diff = diff >= 0 ? diff : -diff;
+        if (diff > 365) {
+            return;
+        }
         var createAjax = new n2.createAjax({
             url: url,
             type: 'post',
@@ -1035,10 +1056,17 @@ n2.ajax = {
             success: success,
             error: error
         });
+        createAjax.setData();
         if (createAjax.dataType === "jsonp") {
             createAjax.createJsonp();
         } else {
             createAjax.createXHR();
         }
+    }
+};
+namespace('n2.date');
+n2.date = {
+    diffDays: function (now, first) {
+        return (now - first) / 864e5;
     }
 };
