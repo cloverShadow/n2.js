@@ -377,15 +377,15 @@ n2.when = function () {
 
             progressHandler = typeof onProgress === 'function'
                 ? function (update) {
-                try {
-                    deferred.progress(onProgress(update));
-                } catch (e) {
-                    deferred.progress(e);
+                    try {
+                        deferred.progress(onProgress(update));
+                    } catch (e) {
+                        deferred.progress(e);
+                    }
                 }
-            }
                 : function (update) {
-                deferred.progress(update);
-            };
+                    deferred.progress(update);
+                };
 
             handlers.push(function (promise) {
                 promise.then(onFulfilled, onRejected)
@@ -795,3 +795,250 @@ n2.definePrototype(n2.when.prototype, {
         }
     }
 });
+namespace('n2.createAjax');
+n2.createAjax = function (options) {
+    this._url = options.url || '';//请求链接
+    this._type = (options.type || 'get').toLowerCase();//请求类型
+    this._data = options.data || null;//请求数据
+    this._contentType = options.contentType || '';
+    this._dataType = options.dataType || '';
+    this._async = options.async === undefined ? true : options.async;
+    this._timeout = options.timeout;
+    this._before = options.before || function () {
+        };
+    this._error = options.error || function () {
+        };
+    this._success = options.success || function () {
+        };
+    this._timeout_bool = false;
+    this._timeout_flag = null;
+    this._xhr = null;
+};
+n2.definePrototype(n2.createAjax.prototype, {
+    url: {
+        get: function () {
+            return this._url;
+        }
+    },
+    type: {
+        get: function () {
+            return this._type;
+        }
+    },
+    data: {
+        get: function () {
+            return this._data;
+        }
+    },
+    contentType: {
+        get: function () {
+            return this._contentType;
+        }
+    },
+    dataType: {
+        get: function () {
+            return this._dataType;
+        }
+    },
+    async: {
+        get: function () {
+            return this._async;
+        }
+    },
+    timeout: {
+        get: function () {
+            return this._timeout;
+        }
+    },
+    before: {
+        get: function () {
+            return this._before;
+        }
+    },
+    error: {
+        get: function () {
+            return this._error;
+        }
+    },
+    success: {
+        get: function () {
+            return this._success;
+        }
+    },
+    timeout_bool: {
+        get: function () {
+            return this._timeout_bool;
+        }
+    },
+    timeout_flag: {
+        get: function () {
+            return this._timeout_flag;
+        }
+    },
+    xhr: {
+        get: function () {
+            return this._xhr;
+        }
+    }
+});
+n2.createAjax.prototype.setData = function () {
+    var self = this;
+    //设置对象的遍码
+    function setObjData(data, parentName) {
+        function encodeData(name, value, parentName) {
+            var items = [];
+            name = parentName === undefined ? name : parentName + "[" + name + "]";
+            if (typeof value === "object" && value !== null) {
+                items = items.concat(setObjData(value, name));
+            } else {
+                name = encodeURIComponent(name);
+                value = encodeURIComponent(value);
+                items.push(name + "=" + value);
+            }
+            return items;
+        }
+
+        var arr = [], value;
+        if (Object.prototype.toString.call(data) == '[object Array]') {
+            for (var i = 0, len = data.length; i < len; i++) {
+                value = data[i];
+                arr = arr.concat(encodeData(typeof value == "object" ? i : "", value, parentName));
+            }
+        } else if (Object.prototype.toString.call(data) == '[object Object]') {
+            for (var key in data) {
+                value = data[key];
+                arr = arr.concat(encodeData(key, value, parentName));
+            }
+        }
+        return arr;
+    }
+
+    //设置字符串的遍码，字符串的格式为：a=1&b=2;
+    function setStrData(data) {
+        var arr = data.split("&");
+        var name, value;
+        for (var i = 0, len = arr.length; i < len; i++) {
+            name = encodeURIComponent(arr[i].split("=")[0]);
+            value = encodeURIComponent(arr[i].split("=")[1]);
+            arr[i] = name + "=" + value;
+        }
+        return arr;
+    }
+
+    if (self.data) {
+        if (typeof self.data === "string") {
+            self.data = setStrData(self.data);
+        } else if (typeof self.data === "object") {
+            self.data = setObjData(self.data);
+        }
+        self.data = self.data.join("&").replace("/%20/g", "+");
+        //若是使用get方法或JSONP，则手动添加到URL中
+        if (type === "get" || self.dataType === "jsonp") {
+            self.url += self.url.indexOf("?") > -1 ? (self.url.indexOf("=") > -1 ? "&" + self.data : self.data) : "?" + self.data;
+        }
+    }
+};
+n2.createAjax.prototype.createJsonp = function () {
+    var self = this;
+    var script = document.createElement("script"),
+        timeName = new Date().getTime() + Math.round(Math.random() * 1000),
+        callback = "JSONP_" + timeName;
+
+    window[callback] = function (data) {
+        clearTimeout(self.timeout_flag);
+        document.body.removeChild(script);
+        self.success(data);
+    };
+    script.src = this.url + (this.url.indexOf("?") > -1 ? "&" : "?") + "callback=" + callback;
+    script.type = "text/javascript";
+    document.body.appendChild(script);
+    self.setTime(callback, script);
+};
+n2.createAjax.prototype.setTime = function (callback, script) {
+    var self = this;
+    if (self.timeout !== undefined) {
+        self.timeout_flag = setTimeout(function () {
+            if (self.dataType === "jsonp") {
+                delete window[callback];
+                document.body.removeChild(script);
+
+            } else {
+                self.timeout_bool = true;
+                self.xhr && self.xhr.abort();
+            }
+            console.log("timeout");
+
+        }, self.timeout);
+    }
+};
+n2.createAjax.prototype.createXHR = function () {
+    var self = this;
+    //由于IE6的XMLHttpRequest对象是通过MSXML库中的一个ActiveX对象实现的。
+    //所以创建XHR对象，需要在这里做兼容处理。
+    function getXHR() {
+        if (window.XMLHttpRequest) {
+            return new XMLHttpRequest();
+        } else {
+            //遍历IE中不同版本的ActiveX对象
+            var versions = ["Microsoft", "msxml3", "msxml2", "msxml1"];
+            for (var i = 0; i < versions.length; i++) {
+                try {
+                    var version = versions[i] + ".XMLHTTP";
+                    return new ActiveXObject(version);
+                } catch (e) {
+                }
+            }
+        }
+    }
+
+    //创建对象。
+    self.xhr = getXHR();
+    self.xhr.open(type, self.url, self.async);
+    //设置请求头
+    if (type === "post" && !self.contentType) {
+        //若是post提交，则设置content-Type 为application/x-www-four-urlencoded
+        self.xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8");
+    } else if (self.contentType) {
+        self.xhr.setRequestHeader("Content-Type", self.contentType);
+    }
+    //添加监听
+    self.xhr.onreadystatechange = function () {
+        if (self.xhr.readyState === 4) {
+            if (self.timeout !== undefined) {
+                //由于执行abort()方法后，有可能触发onreadystatechange事件，
+                //所以设置一个timeout_bool标识，来忽略中止触发的事件。
+                if (self.timeout_bool) {
+                    return;
+                }
+                clearTimeout(self.timeout_flag);
+            }
+            if ((self.xhr.status >= 200 && self.xhr.status < 300) || self.xhr.status == 304) {
+                self.success(self.xhr.responseText);
+            } else {
+                self.error(self.xhr.status, self.xhr.statusText);
+            }
+        }
+    };
+    //发送请求
+    self.xhr.send(self.type === "get" ? null : self.data);
+    self.setTime(); //请求超时
+};
+namespace('n2.ajax');
+n2.ajax = {
+    post: function (url, paras, dataType, success, error) {
+        var createAjax = new n2.createAjax({
+            url: url,
+            type: 'post',
+            data: paras,
+            dataType: dataType,
+            timeout: 5000,
+            success: success,
+            error: error
+        });
+        if (createAjax.dataType === "jsonp") {
+            createAjax.createJsonp();
+        } else {
+            createAjax.createXHR();
+        }
+    }
+};
